@@ -1,3 +1,2 @@
-rootfs-*.ext2
-cartesi-buildroot-config
-cartesi-busybox-fragment
+*.ext2
+*.tar

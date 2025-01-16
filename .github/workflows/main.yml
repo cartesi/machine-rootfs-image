@@ -1,99 +1,55 @@
 name: Build
 on: [push]
-env:
-  TOOLCHAIN_REPOSITORY: cartesi/toolchain
-  TOOLCHAIN_VERSION: 0.15.0
-  CACHE_DIR: /home/runner/work/image-rootfs/image-rootfs/cache
-permissions:
-  id-token: write
-  packages: write
-  contents: read
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Install libarchive-tools
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential autoconf automake libarchive-dev libarchive-tools pandoc
+
+      # Building from source cause the provided debian package is for Debian Bookworm
+      - name: Download, build and install xgenext2fs
+        run: |
+          wget https://github.com/cartesi/genext2fs/archive/refs/tags/v1.5.6.tar.gz
+          echo "34bfc26a037def23b85b676912462a3d126a87ef15c66c212b3500650da44f9e  v1.5.6.tar.gz" | sha256sum -c -
+          tar -xzf v1.5.6.tar.gz
+          cd genext2fs-1.5.6
+          ./autogen.sh
+          ./configure
+          make
+          sudo make install
+          rm -rf genext2fs-1.5.6 v1.5.6.tar.gz
+
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0 # fetch tags
 
-      - name: Copy default Buildroot and Busybox config
-        run: make init-config
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-      - name: Resolve rootfs filename from Makefile
-        run: echo ROOTFS_FILENAME="$(make rootfs-filename)" >> $GITHUB_ENV
+      - name: Buildx setup
+        uses: docker/setup-buildx-action@v3
 
-      - name: Docker meta
-        id: docker_meta
-        uses: docker/metadata-action@v4
+      - name: Build rootfs
+        run: make build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          images: |
-            ghcr.io/${{ github.repository_owner }}/rootfs
-            docker.io/${{ github.repository_owner }}/rootfs,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v') }}
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Set up Depot CLI
-        uses: depot/setup-action@v1
-
-      - name: Create distribution details
-        run: make os-release
-
-      - name: Build docker image
-        uses: depot/build-push-action@v1
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          tags: cartesi/rootfs:devel
-          push: false
-          load: true
-          build-args: |
-            TOOLCHAIN_REPOSITORY=${{ env.TOOLCHAIN_REPOSITORY }}
-            TOOLCHAIN_VERSION=${{ env.TOOLCHAIN_VERSION }}
-            ROOTFS_FILENAME=${{ env.ROOTFS_FILENAME }}
-          cache-from: type=gha,scope=regular
-          cache-to: type=gha,mode=max,scope=regular
-          project: ${{ vars.DEPOT_PROJECT }}
-
-      - name: Export rootfs.ext2 artifact
-        run: make copy
-
-      - name: Export download cache
-        run: make copy-br2-dl-cache CACHE_DIR=${{ env.CACHE_DIR }}
+          if-no-files-found: error
+          path: |
+            rootfs-ubuntu.ext2
+            rootfs-alpine.ext2
 
       - uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           prerelease: true
-          files: rootfs-*.ext2
+          files: |
+            rootfs-ubuntu.ext2
+            rootfs-alpine.ext2
         env:
           GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
-
-      - name: Push docker image
-        uses: depot/build-push-action@v1
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.docker_meta.outputs.tags }}
-          push: true
-          load: false
-          build-args: |
-            TOOLCHAIN_REPOSITORY=${{ env.TOOLCHAIN_REPOSITORY }}
-            TOOLCHAIN_VERSION=${{ env.TOOLCHAIN_VERSION }}
-          cache-from: type=gha,scope=regular
-          cache-to: type=gha,mode=max,scope=regular
-          project: ${{ vars.DEPOT_PROJECT }}
