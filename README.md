@@ -1,5 +1,11 @@
 # Cartesi Machine Image RootFS
 
+> [!WARNING]
+> **This repository is no longer maintained.**
+> The root filesystem image for the Cartesi Machine is released by [cartesi/machine-guest-tools](https://github.com/cartesi/machine-guest-tools/releases) as `rootfs-tools.ext2`.
+> Existing releases here remain available for older projects.
+> Do not use this repository for new development.
+
 The Cartesi Image RootFS is the repository that provides the Docker configuration files to build the `rootfs.ext2` testing filesystem. This is used to run a Linux environment on the Cartesi Machine Emulator reference implementation. The current image is based on the `cartesi/toolchain` that uses Ubuntu 20.04 and GNU GCC 9.3.0. The `rootfs.ext2` is built with Buildroot 2020.05 targeting the RISC-V RV64IMA with ABI LP64 architecture.
 
 ## Getting Started
